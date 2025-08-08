@@ -1,6 +1,6 @@
 # signed-heat-3d (3D volumetric domains)
 
-## Documentation is at [nzfeng.github.io/signed-heat-3d](https://nzfeng.github.io/signed-heat-3d)
+## Documentation is at [nzfeng.github.io/signed-heat-3d](https://nzfeng.github.io/signed-heat-docs)
 
 C++ demo for "[A Heat Method for Generalized Signed Distance](https://nzfeng.github.io/research/SignedHeatMethod/index.html)" by [Nicole Feng](https://nzfeng.github.io/index.html) and [Keenan Crane](https://www.cs.cmu.edu/~kmcrane/), presented at SIGGRAPH 2024.
 
@@ -10,10 +10,10 @@ This library implements the _Signed Heat Method (SHM)_ on **3D volumetric domain
 
 Check out the [sample project](https://github.com/nzfeng/signed-heat-demo-3d) to get started with a build system and a GUI.
 
-Check out the docs at [nzfeng.github.io/signed-heat-3d](nzfeng.github.io/signed-heat-3d).
+Check out the docs at [nzfeng.github.io/signed-heat-3d](https://nzfeng.github.io/signed-heat-docs).
 
 More resources:
-* Python bindings have been released as the `signed-heat-method` package on PyPI. Checkout the [documentation](nzfeng.github.io/signed-heat-3d) for install instructions.
+* Python bindings have been released as the `signed-heat-method` package on PyPI. Checkout the [documentation](https://nzfeng.github.io/signed-heat-docs) for install instructions.
 * If you're interested in using the Signed Heat Method in 2D surface domains, go to [this Github repository](https://github.com/nzfeng/signed-heat-demo) which demonstrates the [geometry-central implementation on (2D) surface meshes and point clouds](https://geometry-central.net/surface/algorithms/signed_heat_method/).
 * Project page with links to paper, pseudocode, supplementals, & videos: [link](https://nzfeng.github.io/research/SignedHeatMethod/index.html)
 
