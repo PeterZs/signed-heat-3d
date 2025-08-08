@@ -1,4 +1,6 @@
-#include "signed_heat_3d.h"
+#include "signedheat3d/signed_heat_3d.h"
+
+#include <exception>
 
 Vector3 centroid(VertexPositionGeometry& geometry) {
 
@@ -120,7 +122,7 @@ void setFaceVectorAreas(VertexPositionGeometry& geometry, FaceData<double>& area
 }
 
 #ifndef SHM_NO_AMGCL
-Vector<double> AMGCL_solve(const SparseMatrix<double>& L, const Vector<double>& RHS, bool verbose) {
+Vector<double> AMGCL_solve(SparseMatrix<double>& L, const Vector<double>& RHS, bool& success, bool verbose) {
 
     // AMGCL needs Eigen matrices to be in row-major order.
     Eigen::SparseMatrix<double, Eigen::RowMajor> LHS = L;
@@ -130,16 +132,39 @@ Vector<double> AMGCL_solve(const SparseMatrix<double>& L, const Vector<double>& 
         // Use AMG as preconditioner:
         amgcl::amg<Backend, amgcl::coarsening::smoothed_aggregation, amgcl::relaxation::spai0>,
         // Set iterative solver:
-        amgcl::solver::bicgstab<Backend>>
+        amgcl::solver::bicgstab<Backend>> // seems the most reliable
+        // amgcl::solver::cg<Backend>>
+        // amgcl::solver::gmres<Backend>>
         Solver;
-    Solver solve(LHS);
+
+    Solver::params prm;
+    prm.solver.tol = 1e-2;
+    prm.solver.maxiter = 1000;
+
+    Solver solve(LHS, prm);
 
     int iters;
     double error;
     size_t n = LHS.rows();
     Vector<double> x(n);
-    std::tie(iters, error) = solve(LHS, RHS, x);
+    success = true;
+    try {
+        std::tie(iters, error) = solve(LHS, RHS, x);
+    } catch (const std::exception& e) {
+        if (verbose) {
+            std::cerr << "Caught exception: '" << e.what() << std::endl;
+            std::cerr << "Use direct solver" << std::endl;
+            success = false;
+        }
+        return x;
+    }
     if (verbose) std::cerr << "AMGCL # iters: " << iters << "\tAMGCL residual: " << error << std::endl;
+
+    if (std::isnan(error) || abs(error) > prm.solver.tol) {
+        if (verbose) std::cerr << "AMGCL failed, use direct solver" << std::endl;
+        success = false;
+    }
+
     return x;
 }
 #endif
