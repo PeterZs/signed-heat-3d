@@ -210,9 +210,9 @@ Vector<double> SignedHeatTetSolver::integrateVectorField(VertexPositionGeometry&
         #ifndef SHM_NO_AMGCL
         bool success;
         Vector<double> Aresult = AMGCL_solve(decomp.AA, combinedRHS, success, VERBOSE);
-        if (!success) Aresult = solvePositiveDefinite(decomp.AA, combinedRHS); // success
+        if (!success) Aresult = solvePositiveDefiniteSystem(decomp.AA, combinedRHS); // success
         #else
-        Vector<double> Aresult = solvePositiveDefinite(decomp.AA, combinedRHS);
+        Vector<double> Aresult = solvePositiveDefiniteSystem(decomp.AA, combinedRHS);
         #endif
         // clang-format on
         phi = reassembleVector(decomp, Aresult, bcVals);
@@ -256,21 +256,18 @@ Vector<double> SignedHeatTetSolver::integrateVectorField(VertexPositionGeometry&
         #ifndef SHM_NO_AMGCL
         bool success;
         Vector<double> soln = AMGCL_solve(LHS, RHS, success, VERBOSE);
-        if (!success) soln = solveSquare(LHS, RHS); // direct solver
+        if (!success) soln = solveSquareSystem(LHS, RHS); // direct solver
         #else 
-        Vector<double> soln = solveSquare(LHS, RHS);
+        Vector<double> soln = solveSquareSystem(LHS, RHS);
         #endif
         // clang-format on
         phi = soln.head(nVertices);
         double shift = averageVertexDataOnSource(geometry, phi);
         phi -= shift * Vector<double>::Ones(nVertices);
     } else {
-        auto solveDirect = [&]() -> Vector<double> {
-            if (rebuild || poissonSolver == nullptr) {
-                if (VERBOSE) std::cerr << "\tFactorizing..." << std::endl;
-                poissonSolver.reset(new PositiveDefiniteSolver<double>(laplaceMat));
-            }
-            phi = poissonSolver->solve(div);
+        auto solveFallback = [&]() -> Vector<double> {
+            phi = solvePositiveDefiniteSystem(laplaceMat, div, poissonSolver, rebuild || poissonSolver == nullptr,
+                                              VERBOSE);
             double shift = averageVertexDataOnSource(geometry, phi);
             phi -= shift * Vector<double>::Ones(nVertices);
             return phi;
@@ -279,9 +276,9 @@ Vector<double> SignedHeatTetSolver::integrateVectorField(VertexPositionGeometry&
         #ifndef SHM_NO_AMGCL
         bool success;
         phi = AMGCL_solve(laplaceMat, div, success, VERBOSE);
-        if (!success) phi = solveDirect();
+        if (!success) phi = solveFallback();
         #else
-        phi = solveDirect();
+        phi = solveFallback();
         #endif
         // clang-format on
     }
@@ -358,21 +355,18 @@ Vector<double> SignedHeatTetSolver::integrateVectorFieldToFaces(VertexPositionGe
         #ifndef SHM_NO_AMGCL
         bool success;
         Vector<double> soln = AMGCL_solve(LHS, RHS, success, VERBOSE);
-        if (!success) soln = solveSquare(LHS, RHS);
+        if (!success) soln = solveSquareSystem(LHS, RHS);
         #else
-        Vector<double> soln = solveSquare(LHS, RHS);
+        Vector<double> soln = solveSquareSystem(LHS, RHS);
         #endif
         // clang-format on
         phi = soln.head(nFaces);
         double shift = averageFaceDataOnSource(geometry, phi);
         phi -= shift * Vector<double>::Ones(nFaces);
     } else {
-        auto solveDirect = [&]() -> Vector<double> {
-            if (rebuild || poissonSolverCR == nullptr) {
-                if (VERBOSE) std::cerr << "\tFactorizing..." << std::endl;
-                poissonSolverCR.reset(new PositiveDefiniteSolver<double>(laplaceCR));
-            }
-            phi = poissonSolverCR->solve(div);
+        auto solveFallback = [&]() -> Vector<double> {
+            phi = solvePositiveDefiniteSystem(laplaceCR, div, poissonSolverCR, rebuild || poissonSolverCR == nullptr,
+                                              VERBOSE);
             double shift = averageFaceDataOnSource(geometry, phi);
             phi -= shift * Vector<double>::Ones(nFaces);
             return phi;
@@ -381,9 +375,9 @@ Vector<double> SignedHeatTetSolver::integrateVectorFieldToFaces(VertexPositionGe
         #ifndef SHM_NO_AMGCL
         bool success;
         phi = AMGCL_solve(laplaceCR, div, success, VERBOSE);
-        if (!success) phi = solveDirect();
+        if (!success) phi = solveFallback();
         #else
-        phi = solveDirect();
+        phi = solveFallback();
         #endif
         // clang-format on
     }
@@ -410,12 +404,9 @@ Vector<double> SignedHeatTetSolver::integrateVectorField(pointcloud::PointPositi
         case (LevelSetConstraint::None): {
             Vector<double> div = vertexDivergence(Yt);
 
-            auto solveDirect = [&]() -> Vector<double> {
-                if (rebuild || poissonSolver == nullptr) {
-                    if (VERBOSE) std::cerr << "\tFactorizing..." << std::endl;
-                    poissonSolver.reset(new PositiveDefiniteSolver<double>(laplaceMat));
-                }
-                phi = poissonSolver->solve(div);
+            auto solveFallback = [&]() -> Vector<double> {
+                phi = solvePositiveDefiniteSystem(laplaceMat, div, poissonSolver, rebuild || poissonSolver == nullptr,
+                                                  VERBOSE);
                 double shift = averageVertexDataOnSource(pointGeom, phi);
                 phi -= shift * Vector<double>::Ones(nVertices);
                 return phi;
@@ -425,9 +416,9 @@ Vector<double> SignedHeatTetSolver::integrateVectorField(pointcloud::PointPositi
             #ifndef SHM_NO_AMGCL
             bool success;
             phi = AMGCL_solve(laplaceMat, div, success, VERBOSE);
-            if (!success) phi = solveDirect();
+            if (!success) phi = solveFallback();
             #else
-            phi = solveDirect();
+            phi = solveFallback();
             #endif
             // clang-format on
             break;
@@ -447,9 +438,9 @@ Vector<double> SignedHeatTetSolver::integrateVectorField(pointcloud::PointPositi
             #ifndef SHM_NO_AMGCL
             bool success;
             Vector<double> Aresult = AMGCL_solve(decomp.AA, combinedRHS, success, VERBOSE);
-            if (!success) Aresult = solvePositiveDefinite(decomp.AA, combinedRHS); // direct solver
+            if (!success) Aresult = solvePositiveDefiniteSystem(decomp.AA, combinedRHS); // direct solver
             #else
-            Vector<double> Aresult = solvePositiveDefinite(decomp.AA, combinedRHS);
+            Vector<double> Aresult = solvePositiveDefiniteSystem(decomp.AA, combinedRHS);
             #endif
             // clang-format on
             phi = reassembleVector(decomp, Aresult, bcVals);
@@ -495,9 +486,9 @@ Vector<double> SignedHeatTetSolver::integrateVectorField(pointcloud::PointPositi
             #ifndef SHM_NO_AMGCL
             bool success;
             Vector<double> soln = AMGCL_solve(LHS, RHS, success, VERBOSE);
-            if (!success) soln = solveSquare(LHS, RHS); // direct solver
+            if (!success) soln = solveSquareSystem(LHS, RHS); // direct solver
             #else
-            Vector<double> soln = solveSquare(LHS, RHS);
+            Vector<double> soln = solveSquareSystem(LHS, RHS);
             #endif
             #// clang-format on
             phi = soln.head(nVertices);
