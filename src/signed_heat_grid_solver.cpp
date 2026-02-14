@@ -98,7 +98,7 @@ Vector<double> SignedHeatGridSolver::computeDistance(VertexPositionGeometry& geo
             size_t k = std::floor(d[2] / cellSizes[2]);
             size_t nodeIdx = indicesToNodeIndex(i, j, k);
             if (hasCellBeenUsed[nodeIdx]) continue;
-            trilinearCoefficients(b, nodeIndices, coeffs);
+            if (!trilinearCoefficients(b, nodeIndices, coeffs)) continue;
             for (size_t idx = 0; idx < nodeIndices.size(); idx++)
                 tripletList.emplace_back(m, nodeIndices[idx], coeffs[idx]);
             hasCellBeenUsed[nodeIdx] = true;
@@ -211,7 +211,7 @@ Vector<double> SignedHeatGridSolver::computeDistance(pointcloud::PointPositionNo
             size_t k = std::floor(d[2] / cellSizes[2]);
             size_t nodeIdx = indicesToNodeIndex(i, j, k);
             if (hasCellBeenUsed[nodeIdx]) continue;
-            trilinearCoefficients(b, nodeIndices, coeffs);
+            if (!trilinearCoefficients(b, nodeIndices, coeffs)) continue;
             for (size_t idx = 0; idx < nodeIndices.size(); idx++)
                 tripletList.emplace_back(m, nodeIndices[idx], coeffs[idx]);
             hasCellBeenUsed[nodeIdx] = true;
@@ -413,12 +413,21 @@ SparseMatrix<double> SignedHeatGridSolver::gradient() const {
 }
 
 /* Evaluate a function at position q, interpolating trilinearly inside grid cells. */
-double SignedHeatGridSolver::evaluateFunction(const Vector<double>& u, const Vector3& q) const {
+bool SignedHeatGridSolver::evaluateFunction(const Vector<double>& u, const Vector3& q, double& value) const {
 
     Vector3 d = q - bboxMin;
-    int i = static_cast<int>(std::floor(d[0] / cellSizes[0]));
-    int j = static_cast<int>(std::floor(d[1] / cellSizes[1]));
-    int k = static_cast<int>(std::floor(d[2] / cellSizes[2]));
+    int i = std::floor(d[0] / cellSizes[0]);
+    int j = std::floor(d[1] / cellSizes[1]);
+    int k = std::floor(d[2] / cellSizes[2]);
+    if (i < 0 || i > resolution[0] - 2) {
+        return false;
+    }
+    if (j < 0 || j > resolution[1] - 2) {
+        return false;
+    }
+    if (k < 0 || k > resolution[2] - 2) {
+        return false;
+    }
     Vector3 p000 = indicesToNodePosition(i, j, k);
     double v000 = u[indicesToNodeIndex(i, j, k)];
     double v100 = u[indicesToNodeIndex(i + 1, j, k)];
@@ -438,16 +447,26 @@ double SignedHeatGridSolver::evaluateFunction(const Vector<double>& u, const Vec
     double v0 = v00 * (1. - ty) + v10 * ty;
     double v1 = v01 * (1. - ty) + v11 * ty;
     double v = v0 * (1. - tz) + v1 * tz;
-    return v;
+    value = v;
+    return true;
 }
 
-void SignedHeatGridSolver::trilinearCoefficients(const Vector3& q, std::vector<size_t>& nodeIndices,
+bool SignedHeatGridSolver::trilinearCoefficients(const Vector3& q, std::vector<size_t>& nodeIndices,
                                                  std::vector<double>& coeffs) const {
 
     Vector3 d = q - bboxMin;
-    size_t i = std::floor(d[0] / cellSizes[0]);
-    size_t j = std::floor(d[1] / cellSizes[1]);
-    size_t k = std::floor(d[2] / cellSizes[2]);
+    int i = std::floor(d[0] / cellSizes[0]);
+    int j = std::floor(d[1] / cellSizes[1]);
+    int k = std::floor(d[2] / cellSizes[2]);
+    if (i < 0 || i > resolution[0] - 2) {
+        return false;
+    }
+    if (j < 0 || j > resolution[1] - 2) {
+        return false;
+    }
+    if (k < 0 || k > resolution[2] - 2) {
+        return false;
+    }
     Vector3 p000 = indicesToNodePosition(i, j, k);
     size_t i000 = indicesToNodeIndex(i, j, k);
     size_t i100 = indicesToNodeIndex(i + 1, j, k);
@@ -471,6 +490,7 @@ void SignedHeatGridSolver::trilinearCoefficients(const Vector3& q, std::vector<s
         (1. - tx) * ty * tz,               // 011
         tx * ty * tz                       // 111
     };
+    return true;
 }
 
 double SignedHeatGridSolver::evaluateAverageAlongSourceGeometry(VertexPositionGeometry& geometry,
@@ -483,7 +503,9 @@ double SignedHeatGridSolver::evaluateAverageAlongSourceGeometry(VertexPositionGe
     for (Face f : mesh.faces()) {
         double A = faceAreas[f];
         Vector3 x = barycenter(geometry, f);
-        shift += A * evaluateFunction(u, x);
+        double value;
+        if (!evaluateFunction(u, x, value)) continue;
+        shift += A * value;
         normalization += A;
     }
     shift /= normalization;
@@ -498,7 +520,9 @@ double SignedHeatGridSolver::evaluateAverageAlongSourceGeometry(pointcloud::Poin
     size_t P = pointGeom.cloud.nPoints();
     for (size_t i = 0; i < P; i++) {
         double A = pointGeom.tuftedGeom->vertexDualAreas[i];
-        shift += A * evaluateFunction(u, pointGeom.positions[i]);
+        double value;
+        if (!evaluateFunction(u, pointGeom.positions[i], value)) continue;
+        shift += A * value;
         normalization += A;
     }
     shift /= normalization;
